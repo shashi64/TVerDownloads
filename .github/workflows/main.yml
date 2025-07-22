@@ -1,0 +1,58 @@
+name: TVerRec
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '30 8 * * 6'
+
+jobs:
+  download-and-upload:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Clone TVerRec repository
+        uses: actions/checkout@v4
+        with:
+          repository: shashi64/TVerRec
+          path: TVerRec
+
+      - name: Create required directories
+        run: mkdir -p TVerRec/downloads TVerRec/temp TVerRec/save
+
+      - name: Install PowerShell
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y wget apt-transport-https software-properties-common
+          wget -q "https://packages.microsoft.com/config/ubuntu/$(lsb_release -rs)/packages-microsoft-prod.deb"
+          sudo dpkg -i --force-confnew packages-microsoft-prod.deb
+          rm packages-microsoft-prod.deb
+          sudo apt-get update
+          sudo apt-get install -y powershell
+
+      - name: Set up WireGuard connection
+        uses: niklaskeerl/easy-wireguard-action@v2
+        with:
+          WG_CONFIG_FILE: ${{ secrets.WG_CONFIG_FILE }}
+
+      - name: Run the download
+        working-directory: ./TVerRec
+        run: |
+         pwsh src/download_bulk.ps1
+
+      - name: Set artifact date
+        id: set_artifact_date
+        run: echo "ARTIFACT_DATE=$(date +'%Y-%m-%d')" >> $GITHUB_ENV
+
+      - name: Compress downloads
+        run: |
+          zip -r tver-downloads-${{ env.ARTIFACT_DATE }}.zip TVerRec/downloads
+
+      - name: Create GitHub Release and Upload Asset
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: tver-${{ env.ARTIFACT_DATE }}
+          name: TVer Downloads ${{ env.ARTIFACT_DATE }}
+          files: tver-downloads-${{ env.ARTIFACT_DATE }}.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
