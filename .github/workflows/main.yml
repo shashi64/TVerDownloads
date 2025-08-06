@@ -3,11 +3,11 @@ name: TVerRec
 on:
   workflow_dispatch:
   schedule:
-    - cron: '30 8 * * 6'
+    - cron: '30 8 * * 6' # Runs at 08:30 UTC every Saturday
 
 jobs:
   download-and-upload:
-    runs-on: ubuntu-latest
+    runs-on: windows-latest # Changed from ubuntu-latest to windows-latest
     steps:
       - name: Clone TVerRec repository
         uses: actions/checkout@v4
@@ -16,37 +16,44 @@ jobs:
           path: TVerRec
 
       - name: Create required directories
-        run: mkdir -p TVerRec/downloads TVerRec/temp TVerRec/save
-
-      - name: Install PowerShell
-        env:
-          DEBIAN_FRONTEND: noninteractive
         run: |
-          sudo apt-get update
-          sudo apt-get install -y wget apt-transport-https software-properties-common
-          wget -q "https://packages.microsoft.com/config/ubuntu/$(lsb_release -rs)/packages-microsoft-prod.deb"
-          sudo dpkg -i --force-confnew packages-microsoft-prod.deb
-          rm packages-microsoft-prod.deb
-          sudo apt-get update
-          sudo apt-get install -y powershell
+          mkdir TVerRec/downloads
+          mkdir TVerRec/temp
+          mkdir TVerRec/save
+        # mkdir -p also works on Windows, but standard mkdir is used for clarity.
+
+      # PowerShell is pre-installed on Windows runners, so no installation step is needed.
 
       - name: Set up WireGuard connection
-        uses: niklaskeerl/easy-wireguard-action@v2
-        with:
-          WG_CONFIG_FILE: ${{ secrets.WG_CONFIG_FILE }}
+        # IMPORTANT: The 'niklaskeerl/easy-wireguard-action' is designed for Linux environments
+        # and will not work directly on Windows. Setting up WireGuard on a Windows
+        # GitHub Actions runner requires a different approach, potentially involving
+        # installing WireGuard via Chocolatey (choco) and then configuring it,
+        # which is more complex and depends on your specific WireGuard setup.
+        # This step is commented out as it's not directly transferable.
+        # If WireGuard is critical, you will need to implement a Windows-specific solution here.
+        # uses: niklaskeerl/easy-wireguard-action@v2
+        # with:
+        #   WG_CONFIG_FILE: ${{ secrets.WG_CONFIG_FILE }}
+        run: |
+          echo "WireGuard setup for Windows runners is not directly supported by easy-wireguard-action."
+          echo "Please implement a Windows-specific WireGuard configuration if needed."
+
 
       - name: Run the download
         working-directory: ./TVerRec
         run: |
-         pwsh src/download_bulk.ps1
+          pwsh src/download_bulk.ps1
 
       - name: Set artifact date
         id: set_artifact_date
-        run: echo "ARTIFACT_DATE=$(date +'%Y-%m-%d')" >> $GITHUB_ENV
+        run: echo "ARTIFACT_DATE=$(Get-Date -Format 'yyyy-MM-dd')" | Out-File -FilePath $env:GITHUB_ENV -Append
+        # Changed date command to PowerShell's Get-Date
 
       - name: Compress downloads
         run: |
-          zip -r tver-downloads-${{ env.ARTIFACT_DATE }}.zip TVerRec/downloads
+          Compress-Archive -Path TVerRec/downloads -DestinationPath tver-downloads-${{ env.ARTIFACT_DATE }}.zip
+        # Changed zip command to PowerShell's Compress-Archive
 
       - name: Create GitHub Release and Upload Asset
         uses: softprops/action-gh-release@v1
